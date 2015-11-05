@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010-2014, openHAB.org and others.
+ * Copyright (c) 2010-2015, openHAB.org and others.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -8,6 +8,7 @@
  */
 package org.openhab.binding.zwave.internal.converter;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 import org.openhab.binding.zwave.internal.converter.command.ZWaveCommandConverter;
@@ -34,6 +35,7 @@ import org.slf4j.LoggerFactory;
  * {@link ZWaveMultiLevelSensorCommandClass}. Implements polling of the sensor
  * status and receiving of sensor events.
  * @author Jan-Willem Spuij
+ * @author Chris Jackson
  * @since 1.4.0
  */
 public class ZWaveMultiLevelSensorConverter extends ZWaveCommandClassConverter<ZWaveMultiLevelSensorCommandClass> {
@@ -59,25 +61,17 @@ public class ZWaveMultiLevelSensorConverter extends ZWaveCommandClassConverter<Z
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void executeRefresh(ZWaveNode node, 
+	public SerialMessage executeRefresh(ZWaveNode node, 
 			ZWaveMultiLevelSensorCommandClass commandClass, int endpointId, Map<String,String> arguments) {
 		String sensorType = arguments.get("sensor_type");
-		SerialMessage serialMessage;
 
-		logger.debug("Generating poll message for {} for node {} endpoint {}", commandClass.getCommandClass().getLabel(), node.getNodeId(), endpointId);
+		logger.debug("NODE {}: Generating poll message for {}, endpoint {}", node.getNodeId(), commandClass.getCommandClass().getLabel(), endpointId);
 		
 		if (sensorType != null) {
-			serialMessage = node.encapsulate(commandClass.getMessage(SensorType.getSensorType(Integer.parseInt(sensorType))), commandClass, endpointId);
+			return node.encapsulate(commandClass.getMessage(SensorType.getSensorType(Integer.parseInt(sensorType))), commandClass, endpointId);
 		} else {
-			serialMessage = node.encapsulate(commandClass.getValueMessage(), commandClass, endpointId);
+			return node.encapsulate(commandClass.getValueMessage(), commandClass, endpointId);
 		}
-		
-		if (serialMessage == null) {
-			logger.warn("Generating message failed for command class = {}, node = {}, endpoint = {}", commandClass.getCommandClass().getLabel(), node.getNodeId(), endpointId);
-			return;
-		}
-		
-		this.getController().sendData(serialMessage);
 	}
 
 	/**
@@ -87,18 +81,52 @@ public class ZWaveMultiLevelSensorConverter extends ZWaveCommandClassConverter<Z
 	public void handleEvent(ZWaveCommandClassValueEvent event, Item item, Map<String,String> arguments) {
 		ZWaveStateConverter<?,?> converter = this.getStateConverter(item, event.getValue());
 		String sensorType = arguments.get("sensor_type");
+		String sensorScale = arguments.get("sensor_scale");
 		ZWaveMultiLevelSensorValueEvent sensorEvent = (ZWaveMultiLevelSensorValueEvent)event;
 
 		if (converter == null) {
-			logger.warn("No converter found for item = {}, node = {} endpoint = {}, ignoring event.", item.getName(), event.getNodeId(), event.getEndpoint());
+			logger.warn("NODE {}: No converter found for item = {}, endpoint = {}, ignoring event.", event.getNodeId(), item.getName(), event.getEndpoint());
 			return;
 		}
 		
 		// Don't trigger event if this item is bound to another sensor type
-		if (sensorType != null && SensorType.getSensorType(Integer.parseInt(sensorType)) != sensorEvent.getSensorType())
+		if (sensorType != null && SensorType.getSensorType(Integer.parseInt(sensorType)) != sensorEvent.getSensorType()) {
 			return;
-		
-		State state = converter.convertFromValueToState(event.getValue());
+		}
+
+		Object val = event.getValue();
+		// Perform a scale conversion if needed
+		if (sensorScale != null && Integer.parseInt(sensorScale) != sensorEvent.getSensorScale()) {
+			int intType = Integer.parseInt(sensorType);
+			SensorType senType = SensorType.getSensorType(intType);
+			if(senType == null) {
+				logger.error("NODE {}: Error parsing sensor type {}", event.getNodeId(), sensorType);
+			}
+			else {
+				switch(senType) {
+				case TEMPERATURE:
+					// For temperature, there are only two scales, so we simplify the conversion
+					if(sensorEvent.getSensorScale() == 0) {
+						// Scale is celsius, convert to fahrenheit
+						double c = ((BigDecimal)val).doubleValue();
+						val = new BigDecimal((c * 9.0 / 5.0) + 32.0 );
+					}
+					else if(sensorEvent.getSensorScale() == 1) {
+						// Scale is fahrenheit, convert to celsius
+						double f = ((BigDecimal)val).doubleValue();
+						val = new BigDecimal((f - 32.0) * 5.0 / 9.0 );					
+					}
+					break;
+				default:
+					break;
+				}
+			}
+
+			logger.debug("NODE {}: Sensor is reporting scale {}, requiring conversion to {}. Value is now {}.",
+					event.getNodeId(), sensorEvent.getSensorScale(), sensorScale, val);
+		}
+
+		State state = converter.convertFromValueToState(val);
 		this.getEventPublisher().postUpdate(item.getName(), state);
 	}
 

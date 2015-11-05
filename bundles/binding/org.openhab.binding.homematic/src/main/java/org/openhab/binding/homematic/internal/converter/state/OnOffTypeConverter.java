@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010-2014, openHAB.org and others.
+ * Copyright (c) 2010-2015, openHAB.org and others.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -36,11 +36,11 @@ public class OnOffTypeConverter extends AbstractEnumTypeConverter<OnOffType> {
 	}
 
 	/**
-	 * If the item is a sensor or a state from a window shutter contact, then
-	 * OnOff must be inverted.
+	 * If the item is a sensor or a state from some devices, then OnOff must be
+	 * inverted.
 	 */
 	@Override
 	protected boolean isInvert(HmValueItem hmValueItem) {
-		return isName(hmValueItem, "SENSOR") || isNameFromDevice(hmValueItem, "STATE", "HM-SEC-SC");
+		return isName(hmValueItem, "SENSOR") || isStateInvertDevice(hmValueItem);
 	}
 }

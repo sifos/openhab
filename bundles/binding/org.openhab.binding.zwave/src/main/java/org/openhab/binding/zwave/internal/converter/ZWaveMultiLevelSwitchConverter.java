@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010-2014, openHAB.org and others.
+ * Copyright (c) 2010-2015, openHAB.org and others.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -30,8 +30,11 @@ import org.openhab.binding.zwave.internal.protocol.commandclass.ZWaveMultiLevelS
 import org.openhab.binding.zwave.internal.protocol.event.ZWaveCommandClassValueEvent;
 import org.openhab.core.events.EventPublisher;
 import org.openhab.core.items.Item;
+import org.openhab.core.library.types.DecimalType;
 import org.openhab.core.library.types.OnOffType;
+import org.openhab.core.library.types.PercentType;
 import org.openhab.core.library.types.StopMoveType;
+import org.openhab.core.library.types.UpDownType;
 import org.openhab.core.types.Command;
 import org.openhab.core.types.State;
 import org.slf4j.Logger;
@@ -83,17 +86,10 @@ public class ZWaveMultiLevelSwitchConverter extends ZWaveCommandClassConverter<Z
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void executeRefresh(ZWaveNode node, 
+	public SerialMessage executeRefresh(ZWaveNode node, 
 			ZWaveMultiLevelSwitchCommandClass commandClass, int endpointId, Map<String,String> arguments) {
-		logger.debug("Generating poll message for {} for node {} endpoint {}", commandClass.getCommandClass().getLabel(), node.getNodeId(), endpointId);
-		SerialMessage serialMessage = node.encapsulate(commandClass.getValueMessage(), commandClass, endpointId);
-		
-		if (serialMessage == null) {
-			logger.warn("Generating message failed for command class = {}, node = {}, endpoint = {}", commandClass.getCommandClass().getLabel(), node.getNodeId(), endpointId);
-			return;
-		}
-		
-		this.getController().sendData(serialMessage);
+		logger.debug("NODE {}: Generating poll message for {} for node {} endpoint {}", node.getNodeId(), commandClass.getCommandClass().getLabel(), endpointId);
+		return node.encapsulate(commandClass.getValueMessage(), commandClass, endpointId);
 	}
 
 	/**
@@ -107,8 +103,20 @@ public class ZWaveMultiLevelSwitchConverter extends ZWaveCommandClassConverter<Z
 			logger.warn("No converter found for item = {}, node = {} endpoint = {}, ignoring event.", item.getName(), event.getNodeId(), event.getEndpoint());
 			return;
 		}
-		
+
 		State state = converter.convertFromValueToState(event.getValue());
+		if ("true".equalsIgnoreCase(arguments.get("invert_state"))) {
+			// Support inversion of roller shutter UP/DOWN and percentages
+			if (converter instanceof IntegerUpDownTypeConverter) {
+				if(state == UpDownType.UP)
+					state = UpDownType.DOWN;
+				else
+					state = UpDownType.UP;
+			}
+		}
+		if ("true".equalsIgnoreCase(arguments.get("invert_percent")) &&	converter instanceof IntegerPercentTypeConverter) {
+			state = new PercentType(100 - ((DecimalType)state).intValue());
+		}
 		this.getEventPublisher().postUpdate(item.getName(), state);
 	}
 
@@ -120,7 +128,6 @@ public class ZWaveMultiLevelSwitchConverter extends ZWaveCommandClassConverter<Z
 			ZWaveMultiLevelSwitchCommandClass commandClass, int endpointId, Map<String,String> arguments) {
 		SerialMessage serialMessage = null;
 		String restoreLastValue = null;
-		
 		if (command instanceof StopMoveType && (StopMoveType)command == StopMoveType.STOP) {
 			// special handling for the STOP command
 			serialMessage = commandClass.stopLevelChangeMessage();
@@ -129,21 +136,48 @@ public class ZWaveMultiLevelSwitchConverter extends ZWaveCommandClassConverter<Z
 			if (command instanceof OnOffType) {
 				restoreLastValue = arguments.get("restore_last_value");
 				
-				if ("true".equalsIgnoreCase(restoreLastValue))
+				if ("true".equalsIgnoreCase(restoreLastValue)) {
 					converter = this.restoreValueOnOffConverter;
-				else 
+				}
+				else { 
 					converter = this.normalOnOffConverter;
+				}
 			} else {
 				converter = this.getCommandConverter(command.getClass());				
 			}
 			
 			if (converter == null) {
-				logger.warn("No converter found for item = {}, node = {} endpoint = {}, ignoring command.", item.getName(), node.getNodeId(), endpointId);
+				logger.warn("NODE {}: No converter found for item = {}, endpoint = {}, ignoring command.", node.getNodeId(), item.getName(), endpointId);
 				return;
 			}
+
+			// Allow inversion of roller shutter UP/DOWN
+			if (converter instanceof MultiLevelUpDownCommandConverter) {
+				logger.debug("Multilevel Switch MultiLevelUpDownCommandConverter");
+				if ("true".equalsIgnoreCase(arguments.get("invert_state"))) {
+					logger.trace("Multilevel Switch MultiLevelUpDownCommandConverter - invert");
+					if(command == UpDownType.UP) {
+						command = UpDownType.DOWN;
+					}
+					else {
+						command = UpDownType.UP;
+					}
+					logger.trace("Multilevel Switch MultiLevelUpDownCommandConverter - inverted: {}", command);
+				}
+			}
 			
+			// Allow inversion of roller shutter PERCENT value
+			if(converter instanceof MultiLevelPercentCommandConverter){
+				logger.debug("Multilevel Switch MultiLevelPercentCommandConverter");
+				if ("true".equalsIgnoreCase(arguments.get("invert_percent"))) {
+					logger.trace("Multilevel Switch MultiLevelPercentCommandConverter - invert");
+					command = new PercentType(100 - ((DecimalType)command).intValue());
+					logger.trace("Multilevel Switch MultiLevelPercentCommandConverter - inverted: {}", command);
+				}
+			}
+
 			Integer value = (Integer)converter.convertFromCommandToValue(item, command);
-			logger.trace("Converted command '{}' to value {} for item = {}, node = {}, endpoint = {}.", command.toString(), value, item.getName(), node.getNodeId(), endpointId);
+			logger.trace("NODE {}: Converted command '{}' to value {} for item = {}, endpoint = {}.", node.getNodeId(), command.toString(), value, item.getName(), endpointId);
 
 			serialMessage = commandClass.setValueMessage(value);
 		}
@@ -159,10 +193,12 @@ public class ZWaveMultiLevelSwitchConverter extends ZWaveCommandClassConverter<Z
 		this.getController().sendData(serialMessage);
 
 		// update the bus in case of normal dimming. schedule refresh in case of restore to last value dimming.
-		if (!"true".equalsIgnoreCase(restoreLastValue) && command instanceof OnOffType && (OnOffType)command == OnOffType.ON)
+		if (!"true".equalsIgnoreCase(restoreLastValue) && command instanceof OnOffType && (OnOffType)command == OnOffType.ON) {
 			executeRefresh(node, commandClass, endpointId, arguments);
-		else if (command instanceof State)
+		}
+		else if (command instanceof State) {
 			this.getEventPublisher().postUpdate(item.getName(), (State)command);
+		}
 	}
 
 	/**

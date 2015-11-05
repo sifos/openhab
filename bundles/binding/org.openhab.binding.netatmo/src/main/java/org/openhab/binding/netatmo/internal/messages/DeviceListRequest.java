@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010-2013, openHAB.org and others.
+ * Copyright (c) 2010-2015, openHAB.org and others.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -14,18 +14,23 @@ import static org.openhab.io.net.http.HttpUtil.executeUrl;
 import org.apache.commons.httpclient.URIException;
 import org.apache.commons.lang.builder.ToStringBuilder;
 import org.openhab.binding.netatmo.internal.NetatmoException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A devicelist request returns the list of devices owned by the user, and their
  * modules.
  * 
  * @author Andreas Brenk
+ * @author Rob Nielsen
  * @since 1.4.0
  * @see <a href="http://dev.netatmo.com/doc/restapi/devicelist">devicelist</a>
  */
 public class DeviceListRequest extends AbstractRequest {
 
-	private static final String RESOURCE_URL = "http://api.netatmo.net/api/devicelist";
+	private static final String RESOURCE_URL = API_BASE_URL + "devicelist";
+
+	private static final Logger logger = LoggerFactory.getLogger(DeviceListRequest.class);
 
 	private final String accessToken;
 
@@ -44,17 +49,21 @@ public class DeviceListRequest extends AbstractRequest {
 
 	@Override
 	public DeviceListResponse execute() {
+		final String url = prepare();
+
+		logger.debug(url);
+
+		String json = null;
+
 		try {
-			final String url = prepare();
-			final String json = executeQuery(url);
+			json = executeQuery(url);
 
 			final DeviceListResponse response = JSON.readValue(json,
 					DeviceListResponse.class);
 
 			return response;
 		} catch (final Exception e) {
-			throw new NetatmoException(
-					"Could not execute device list request!", e);
+			throw newException("Could not execute device list request!", e, url, json);
 		}
 	}
 

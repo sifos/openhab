@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010-2014, openHAB.org and others.
+ * Copyright (c) 2010-2015, openHAB.org and others.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -7,6 +7,9 @@
  * http://www.eclipse.org/legal/epl-v10.html
  */
 package org.openhab.binding.homematic.internal.converter.state;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import org.openhab.binding.homematic.internal.model.HmDatapoint;
 import org.openhab.binding.homematic.internal.model.HmValueItem;
@@ -19,6 +22,20 @@ import org.openhab.core.types.State;
  * @since 1.5.0
  */
 public abstract class AbstractEnumTypeConverter<T extends State> extends AbstractTypeConverter<T> {
+
+	/**
+	 * Defines all devices where the state datapoint must be inverted.
+	 */
+	private static final List<StateInvertInfo> stateInvertDevices = new ArrayList<StateInvertInfo>(3);
+
+	static {
+		stateInvertDevices.add(new StateInvertInfo("HM-SEC-SC"));
+		stateInvertDevices.add(new StateInvertInfo("ZEL STG RM FFK"));
+		stateInvertDevices.add(new StateInvertInfo("HM-SEC-TIS"));
+		stateInvertDevices.add(new StateInvertInfo("HMW-IO-12-SW14-DR", 15, 26));
+		stateInvertDevices.add(new StateInvertInfo("BC-SC-RD-WM"));
+		stateInvertDevices.add(new StateInvertInfo("HM-SCI-3-FM"));
+	}
 
 	/**
 	 * Subclasses must implement this method to create the 'false' type of an
@@ -45,14 +62,17 @@ public abstract class AbstractEnumTypeConverter<T extends State> extends Abstrac
 	}
 
 	/**
-	 * Checks the name and the device of the item, value must be inverted for
-	 * some devices.
+	 * Checks the device if the state value must be inverted.
 	 */
-	protected boolean isNameFromDevice(HmValueItem hmValueItem, String name, String device) {
-		if (hmValueItem.getName().equals(name)) {
+	protected boolean isStateInvertDevice(HmValueItem hmValueItem) {
+		if ("STATE".equals(hmValueItem.getName())) {
 			if (hmValueItem instanceof HmDatapoint) {
 				HmDatapoint dp = (HmDatapoint) hmValueItem;
-				return dp.getChannel().getDevice().getType().toUpperCase().startsWith(device);
+				for (StateInvertInfo stateInvertInfo : stateInvertDevices) {
+					if (stateInvertInfo.isToInvert(dp)) {
+						return true;
+					}
+				}
 			}
 		}
 		return false;

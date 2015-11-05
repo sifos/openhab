@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010-2014, openHAB.org and others.
+ * Copyright (c) 2010-2015, openHAB.org and others.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -26,17 +26,26 @@ public final class M_Message extends Message {
 
 	public ArrayList<RoomInformation> rooms;
 	public ArrayList<DeviceInformation> devices;
+	private Boolean hasConfiguration ;
 	Logger logger = LoggerFactory.getLogger(MaxCubeBinding.class);
 	
 
 	public M_Message(String raw) {
 		super(raw);
+		hasConfiguration = false;
 
 		String[] tokens = this.getPayload().split(Message.DELIMETER);
 
 		if (tokens.length > 1) try {
 			byte[] bytes = Base64.decodeBase64(tokens[2].getBytes());
-
+			
+			hasConfiguration = true;
+			logger.trace("*** M_Message trace**** ");
+			logger.trace ("\tMagic? (expect 86) : {}", (int) bytes[0]);
+			logger.trace ("\tVersion? (expect 2): {}", (int) bytes[1]);
+			logger.trace ("\t#defined rooms in M: {}", (int) bytes[2]);
+			
+			
 			rooms = new ArrayList<RoomInformation>();
 			devices = new ArrayList<DeviceInformation>();
 
@@ -49,12 +58,12 @@ public final class M_Message extends Message {
 			for (int i = 0; i < roomCount; i++) {
 
 				int position = bytes[byteOffset++];
-				String name = "";
-
-				int nameLength = (int) bytes[byteOffset++] & 0xff; 
-				for (int char_idx = 0; char_idx < nameLength; char_idx++) {
-					name += (char) bytes[byteOffset++];
-				}
+				
+				int nameLength = (int) bytes[byteOffset++] & 0xff;
+				byte[] data = new byte[nameLength];
+				System.arraycopy(bytes, byteOffset, data, 0, nameLength);
+				byteOffset += nameLength;
+				String name = new String(data, "UTF-8");
 
 				String rfAddress = Utils.toHex(((int)bytes[byteOffset] & 0xff), ((int)bytes[byteOffset+1] & 0xff), ((int)bytes[byteOffset + 2] & 0xff));
 				byteOffset += 3;
@@ -79,12 +88,10 @@ public final class M_Message extends Message {
 				}
 
 				int nameLength = (int)bytes[byteOffset++] & 0xff;
-
-				String deviceName = "";
-
-				for (int char_idx = 0;	 char_idx < nameLength; char_idx++) {
-					deviceName += (char)bytes[byteOffset++];
-				}
+				byte[] data = new byte[nameLength];
+				System.arraycopy(bytes, byteOffset, data, 0, nameLength);
+				byteOffset += nameLength;
+				String deviceName = new String(data, "UTF-8");
 
 				int roomId = (int)bytes[byteOffset++] & 0xff;
 				devices.add(new DeviceInformation(deviceType, serialNumber, rfAddress, deviceName, roomId));	
@@ -97,29 +104,35 @@ public final class M_Message extends Message {
 		}
 		else {
 			logger.info("No rooms defined. Configure your Max!Cube");
+			hasConfiguration = false;
 		} 
 	}
 
 	@Override
 	public void debug(Logger logger) {
 		logger.debug("=== M_Message === ");
-		logger.trace("\tRAW : {}", this.getPayload());
-		for(RoomInformation room: rooms){
-			logger.debug("\t=== Rooms ===");
-			logger.debug("\tRoom Pos   : {}", room.getPosition());
-			logger.debug("\tRoom Name  : {}", room.getName());
-			logger.debug("\tRoom RF Adr: {}",  room.getRFAddress());
-			for(DeviceInformation device: devices){
-				if (room.getPosition() == device.getRoomId()) {
-					logger.debug("\t=== Devices ===");
-					logger.debug("\tDevice Type    : {}", device.getDeviceType());
-					logger.debug("\tDevice Name    : {}", device.getName());
-					logger.debug("\tDevice Serialnr: {}", device.getSerialNumber());
-					logger.debug("\tDevice RF Adr  : {}", device.getRFAddress());
-					logger.debug("\tRoom Id        : {}", device.getRoomId());
+		if (hasConfiguration) {
+			logger.trace("\tRAW : {}", this.getPayload());
+			for(RoomInformation room: rooms){
+				logger.debug("\t=== Rooms ===");
+				logger.debug("\tRoom Pos   : {}", room.getPosition());
+				logger.debug("\tRoom Name  : {}", room.getName());
+				logger.debug("\tRoom RF Adr: {}",  room.getRFAddress());
+				for(DeviceInformation device: devices){
+					if (room.getPosition() == device.getRoomId()) {
+						logger.debug("\t=== Devices ===");
+						logger.debug("\tDevice Type    : {}", device.getDeviceType());
+						logger.debug("\tDevice Name    : {}", device.getName());
+						logger.debug("\tDevice Serialnr: {}", device.getSerialNumber());
+						logger.debug("\tDevice RF Adr  : {}", device.getRFAddress());
+						logger.debug("\tRoom Id        : {}", device.getRoomId());
+					}
 				}
-			}
 
+			}
+		} 
+		else {
+			logger.debug("M-Message empty. No Configuration");
 		}
 	}
 
