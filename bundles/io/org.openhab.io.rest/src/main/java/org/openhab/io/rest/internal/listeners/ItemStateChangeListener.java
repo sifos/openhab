@@ -15,8 +15,10 @@ import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 
 import org.openhab.core.items.Item;
+import org.openhab.core.items.GroupItem;
 import org.openhab.io.rest.RESTApplication;
 import org.openhab.io.rest.internal.resources.ItemResource;
+import org.openhab.io.rest.internal.resources.GroupResource;
 import org.openhab.io.rest.internal.resources.ResponseTypeHelper;
 import org.openhab.ui.items.ItemUIRegistry;
 import org.slf4j.Logger;
@@ -71,6 +73,13 @@ public class ItemStateChangeListener extends ResourceStateChangeListener {
 		            	return itemBean;
 					}
 		        }
+				else if (pathInfo.startsWith("/" + GroupResource.PATH_GROUPS)) {
+					Item item = lastChange; 
+		            if(item!=null) {
+		            	Object itemBean = GroupResource.createItemBean(item, false, basePath);	    	
+		            	return itemBean;
+					}
+				}
 			}
 		}
 		return null;
@@ -106,10 +115,41 @@ public class ItemStateChangeListener extends ResourceStateChangeListener {
                 }
             }
         }
+        else if (pathInfo.startsWith("/" + GroupResource.PATH_GROUPS)) {
+        	String[] pathSegments = pathInfo.substring(1).split("/");
+
+            if(pathSegments.length>=2) {
+            	try {
+            		ItemUIRegistry registry = RESTApplication.getItemUIRegistry();
+                	if(registry!=null)
+                	{
+                		Item pathItem = registry.getItem(pathSegments[1].toString());
+                       	if(pathItem instanceof GroupItem) {
+                       		GroupItem gItem = (GroupItem) pathItem;
+                       		final Set<String> set = new HashSet<String>();
+                       		for (Item item : gItem.getAllMembers()) {
+                       			set.add(item.getName());
+                       		}
+                       		return set;
+                       	}
+                       	else {
+                       		return Collections.singleton(pathSegments[1]);
+                       	}
+                	}
+				} catch (Exception e) {
+					return Collections.singleton(pathSegments[1]);
+				}
+            } else if (pathSegments.length == 1) {
+            	ItemUIRegistry registry = RESTApplication.getItemUIRegistry();
+                if(registry!=null) {
+                	final Set<String> set = new HashSet<String>();
+                	for (Item item : registry.getItems()) {
+                		set.add(item.getName());
+                	}
+                	return set;
+                }
+            }
+        }        
         return new HashSet<String>();
-	}
-
-
-
-
+	}	
 }

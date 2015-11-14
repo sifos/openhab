@@ -24,6 +24,8 @@ import org.openhab.core.events.EventPublisher;
 import org.openhab.core.items.ItemRegistry;
 import org.openhab.io.net.http.SecureHttpContext;
 import org.openhab.io.rest.internal.resources.ItemResource;
+import org.openhab.io.rest.internal.resources.GroupResource;
+import org.openhab.io.rest.internal.resources.ContextResource;
 import org.openhab.io.rest.internal.resources.RootResource;
 import org.openhab.io.rest.internal.resources.SitemapResource;
 import org.openhab.io.servicediscovery.DiscoveryService;
@@ -181,6 +183,8 @@ public class RESTApplication extends Application {
         Set<Class<?>> result = new HashSet<Class<?>>();
         result.add(RootResource.class);
         result.add(ItemResource.class);
+        result.add(ContextResource.class);
+        result.add(GroupResource.class);
         result.add(SitemapResource.class);
         return result;
     }

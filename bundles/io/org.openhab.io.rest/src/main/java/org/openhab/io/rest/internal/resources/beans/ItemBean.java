@@ -25,6 +25,8 @@ public class ItemBean {
 	public String name;	
 	public String state;
 	public String link;
+	public String label;
+	public String icon;
 	
 	public ItemBean() {}
 		

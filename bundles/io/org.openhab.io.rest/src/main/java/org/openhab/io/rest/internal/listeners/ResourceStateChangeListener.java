@@ -184,6 +184,7 @@ abstract public class ResourceStateChangeListener {
 	protected void registerStateChangeListenerOnRelevantItems(String pathInfo, StateChangeListener stateChangeListener ) {
 		relevantItems = getRelevantItemNames(pathInfo);
 		for(String itemName : relevantItems) {
+			logger.info("FYI: ResourceStateChangeListener - registerStateChangeListenerOnRelevantItems - relevantItems: "+itemName);			
 			registerChangeListenerOnItem(stateChangeListener, itemName);
 		}
 	}
@@ -192,6 +193,7 @@ abstract public class ResourceStateChangeListener {
 		
 		if(relevantItems!=null) {
 			for(String itemName : relevantItems) {
+				logger.info("FYI: ResourceStateChangeListener - unregisterStateChangeListenerOnRelevantItems - relevantItems: "+itemName);				
 				unregisterChangeListenerOnItem(stateChangeListener, itemName);
 			}
 		}
